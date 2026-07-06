@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+ <html lang="en-US">
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+     <title>Click on the circle-games</title>
+     <style>
+         * {
+             margin: 0;
+             padding: 0;
+             box-sizing: border-box;
+         }
+         
+         body {
+             width: 100vw;
+             height: 100vh;
+             overflow: hidden;
+             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+             display: flex;
+             flex-direction: column;
+             align-items: center;
+             justify-content: center;
+             touch-action: none;
+             user-select: none;
+             -webkit-user-select: none;
+         }
+         
+         #scoreBoard {
+             position: fixed;
+             top: 20px;
+             left: 50%;
+             transform: translateX(-50%);
+             background: rgba(255, 255, 255, 0.25);
+             backdrop-filter: blur(10px);
+             -webkit-backdrop-filter: blur(10px);
+             padding: 12px 32px;
+             border-radius: 50px;
+             color: white;
+             font-size: 24px;
+             font-weight: bold;
+             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+             z-index: 10;
+             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+         }
+         
+         #gameCanvas {
+             display: block;
+             cursor: pointer;
+         }
+         
+         #startScreen {
+             position: fixed;
+             top: 0;
+             left: 0;
+             width: 100%;
+             height: 100%;
+             background: rgba(0, 0, 0, 0.5);
+             display: flex;
+             flex-direction: column;
+             align-items: center;
+             justify-content: center;
+             z-index: 20;
+             backdrop-filter: blur(5px);
+             -webkit-backdrop-filter: blur(5px);
+         }
+         
+         #startScreen h1 {
+             color: white;
+             font-size: 36px;
+             margin-bottom: 20px;
+             text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+         }
+         
+         #startScreen p {
+             color: rgba(255, 255, 255, 0.9);
+             font-size: 16px;
+             margin-bottom: 20px;
+             text-align: center;
+             padding: 0 20px;
+             line-height: 1.6;
+         }
+         
+         #startScreen .tip {
+             color: #FFD700;
+             font-size: 14px;
+             margin-bottom: 30px;
+             text-align: center;
+         }
+         
+         #startBtn {
+             background: white;
+             color: #667eea;
+             border: none;
+             padding: 16px 48px;
+             font-size: 20px;
+             font-weight: bold;
+             border-radius: 50px;
+             cursor: pointer;
+             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+             transition: transform 0.2s, box-shadow 0.2s;
+         }
+         
+         #startBtn:active {
+             transform: scale(0.95);
+             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+         }
+         
+         .hidden {
+             display: none !important;
+         }
+         
+         @media (max-width: 480px) {
+             #scoreBoard {
+                 font-size: 20px;
+                 padding: 10px 24px;
+                 top: 15px;
+             }
+             
+             #startScreen h1 {
+                 font-size: 28px;
+             }
+             
+             #startBtn {
+                 padding: 14px 40px;
+                 font-size: 18px;
+             }
+         }
+     </style>
+ </head>
+ <body>
+     <div id="scoreBoard">得分: <span id="score">0</span></div>
+     <canvas id="gameCanvas"></canvas>
+     
+     <div id="startScreen">
+         <h1>🎯 Click the circle</h1>
+         <p>Tap the circle that appears on the screen<br>See how many points you can get?</p>
+         <p class="tip">💰 Gold coins + 5 points (rare)</p>
+         <button id="startBtn">开始游戏</button>
+     </div>
+     <script>
+         const canvas = document.getElementById('gameCanvas');
+         const ctx = canvas.getContext('2d');
+         const scoreElement = document.getElementById('score');
+         const startScreen = document.getElementById('startScreen');
+         const startBtn = document.getElementById('startBtn');
+         
+         let score = 0;
+         let circle = null;
+         let gameRunning = false;
+         let animationId = null;
+         
+         // 圆圈颜色数组
+         const colors = [
+             '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
+             '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
+             '#BB8FCE', '#85C1E9', '#F8B500', '#00CED1'
+         ];
+         
+         // 调整Canvas大小以适配屏幕
+         function resizeCanvas() {
+             canvas.width = window.innerWidth;
+             canvas.height = window.innerHeight;
+             
+             // 如果游戏正在运行且圆圈/金币存在，确保在可见区域内
+             if (circle && gameRunning) {
+                 const radius = circle.radius;
+                 circle.x = Math.max(radius, Math.min(canvas.width - radius, circle.x));
+                 circle.y = Math.max(radius + 60, Math.min(canvas.height - radius, circle.y));
+             }
+         }
+         
+         // 生成随机圆圈（有概率生成金币）
+         function spawnCircle() {
+             const minRadius = Math.max(20, Math.min(canvas.width, canvas.height) * 0.04);
+             const maxRadius = Math.max(40, Math.min(canvas.width, canvas.height) * 0.08);
+             const radius = Math.random() * (maxRadius - minRadius) + minRadius;
+             
+             const x = radius + Math.random() * (canvas.width - radius * 2);
+             const y = radius + 70 + Math.random() * (canvas.height - radius * 2 - 70);
+             
+             // 20%概率生成金币
+             const isCoin = Math.random() < 0.2;
+             
+             const color = isCoin ? '#FFD700' : colors[Math.floor(Math.random() * colors.length)];
+             
+             circle = {
+                 x: x,
+                 y: y,
+                 radius: radius,
+                 color: color,
+                 scale: 0,
+                 targetScale: 1,
+                 pulsePhase: 0,
+                 isCoin: isCoin,
+                 points: isCoin ? 5 : 1,
+                 rotateAngle: 0
+             };
+         }
+         
+         // 检测点击是否在圆圈内
+         function isPointInCircle(px, py, circle) {
+             const dx = px - circle.x;
+             const dy = py - circle.y;
+             return dx * dx + dy * dy <= circle.radius * circle.radius * circle.scale * circle.scale;
+         }
+         
+         // 处理点击/触摸事件
+         function handleClick(x, y) {
+             if (!gameRunning || !circle) return;
+             
+             if (isPointInCircle(x, y, circle)) {
+                 score += circle.points;
+                 scoreElement.textContent = score;
+                 
+                 // 点击消失动画
+                 circle.targetScale = 0;
+                 
+                 // 短暂延迟后生成新圆圈
+                 setTimeout(() => {
+                     if (gameRunning) {
+                         spawnCircle();
+                     }
+                 }, 150);
+             }
+         }
+         
+         // 鼠标点击事件
+         canvas.addEventListener('mousedown', (e) => {
+             handleClick(e.clientX, e.clientY);
+         });
+         
+         // 触摸事件
+         canvas.addEventListener('touchstart', (e) => {
+             e.preventDefault();
+             const touch = e.touches[0];
+             handleClick(touch.clientX, touch.clientY);
+         }, { passive: false });
+         
+         // 绘制金币
+         function drawCoin() {
+             const r = circle.radius;
+             
+             // 外圈金色
+             ctx.beginPath();
+             ctx.arc(0, 0, r, 0, Math.PI * 2);
+             const coinGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+             coinGradient.addColorStop(0, '#FFE066');
+             coinGradient.addColorStop(0.5, '#FFD700');
+             coinGradient.addColorStop(1, '#DAA520');
+             ctx.fillStyle = coinGradient;
+             ctx.fill();
+             
+             // 内圈
+             ctx.beginPath();
+             ctx.arc(0, 0, r * 0.75, 0, Math.PI * 2);
+             ctx.strokeStyle = '#B8860B';
+             ctx.lineWidth = 2;
+             ctx.stroke();
+             
+             // 金币符号 ¥
+             ctx.fillStyle = '#B8860B';
+             ctx.font = `bold ${r * 0.7}px Arial`;
+             ctx.textAlign = 'center';
+             ctx.textBaseline = 'middle';
+             ctx.fillText('¥', 0, 2);
+             
+             // 高光
+             ctx.beginPath();
+             ctx.arc(-r * 0.25, -r * 0.25, r * 0.2, 0, Math.PI * 2);
+             ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+             ctx.fill();
+         }
+         
+         // 绘制圆圈
+         function drawCircle() {
+             if (!circle) return;
+             
+             ctx.save();
+             ctx.translate(circle.x, circle.y);
+             ctx.scale(circle.scale, circle.scale);
+             
+             // 金币旋转效果
+             if (circle.isCoin) {
+                 circle.rotateAngle += 0.03;
+                 ctx.rotate(circle.rotateAngle);
+             }
+             
+             // 绘制阴影
+             ctx.shadowColor = circle.isCoin ? 'rgba(255, 215, 0, 0.6)' : 'rgba(0, 0, 0, 0.3)';
+             ctx.shadowBlur = circle.isCoin ? 20 : 15;
+             ctx.shadowOffsetY = 5;
+             
+             if (circle.isCoin) {
+                 drawCoin();
+             } else {
+                 // 绘制实心圆圈
+                 ctx.beginPath();
+                 ctx.arc(0, 0, circle.radius, 0, Math.PI * 2);
+                 ctx.fillStyle = circle.color;
+                 ctx.fill();
+                 
+                 // 绘制高光效果
+                 ctx.shadowColor = 'transparent';
+                 const gradient = ctx.createRadialGradient(
+                     -circle.radius * 0.3, -circle.radius * 0.3, 0,
+                     0, 0, circle.radius
+                 );
+                 gradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+                 gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
+                 gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                 
+                 ctx.beginPath();
+                 ctx.arc(0, 0, circle.radius, 0, Math.PI * 2);
+                 ctx.fillStyle = gradient;
+                 ctx.fill();
+             }
+             
+             ctx.restore();
+         }
+         
+         // 游戏主循环
+         function gameLoop() {
+             // 清空画布
+             ctx.clearRect(0, 0, canvas.width, canvas.height);
+             
+             if (circle) {
+                 // 缩放动画（出现/消失）
+                 if (circle.scale < circle.targetScale) {
+                     circle.scale += 0.08;
+                     if (circle.scale > circle.targetScale) {
+                         circle.scale = circle.targetScale;
+                     }
+                 } else if (circle.scale > circle.targetScale) {
+                     circle.scale -= 0.1;
+                     if (circle.scale < circle.targetScale) {
+                         circle.scale = circle.targetScale;
+                     }
+                 }
+                 
+                 // 普通圆圈轻微脉冲效果（金币有旋转效果，不需要脉冲）
+                 if (circle.scale === 1 && circle.targetScale === 1 && !circle.isCoin) {
+                     circle.pulsePhase += 0.05;
+                     const pulse = 1 + Math.sin(circle.pulsePhase) * 0.03;
+                     ctx.save();
+                     ctx.translate(circle.x, circle.y);
+                     ctx.scale(pulse, pulse);
+                     ctx.translate(-circle.x, -circle.y);
+                 }
+                 
+                 drawCircle();
+                 
+                 if (circle.scale === 1 && circle.targetScale === 1 && !circle.isCoin) {
+                     ctx.restore();
+                 }
+             }
+             
+             animationId = requestAnimationFrame(gameLoop);
+         }
+         
+         // 开始游戏
+         function startGame() {
+             score = 0;
+             scoreElement.textContent = score;
+             gameRunning = true;
+             startScreen.classList.add('hidden');
+             spawnCircle();
+         }
+         
+         // 开始按钮点击
+         startBtn.addEventListener('click', startGame);
+         startBtn.addEventListener('touchstart', (e) => {
+             e.preventDefault();
+             startGame();
+         }, { passive: false });
+         
+         // 窗口大小改变时重新调整
+         window.addEventListener('resize', resizeCanvas);
+         
+         // 初始化
+         resizeCanvas();
+         gameLoop();
+     </script>
+ </body>
